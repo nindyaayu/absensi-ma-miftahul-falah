@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scanner Absensi - MA Miftahul Falah Capang</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f1f3f5;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 24px;
+      background: white;
+      border-radius: 16px;
+    }
+
+    h2 { color: #b5121b; }
+
+    #reader {
+      width: 100%;
+      margin: 20px auto;
+    }
+
+    #status {
+      padding: 15px;
+      border-radius: 10px;
+      white-space: pre-line;
+      background: #eee;
+      margin: 15px 0;
+      line-height: 1.5;
+    }
+
+    .success {
+      background: #d1fae5 !important;
+      color: #065f46;
+    }
+
+    .error {
+      background: #fee2e2 !important;
+      color: #991b1b;
+    }
+
+    .loading {
+      background: #e5e7eb !important;
+      color: #333;
+    }
+
+    #attendanceToast {
+      position: fixed;
+      left: 50%;
+      top: 16px;
+      transform: translate(-50%, -12px);
+      width: min(92vw, 440px);
+      z-index: 99999;
+      padding: 14px 17px;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.22);
+      text-align: left;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease, visibility .2s;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    #attendanceToast.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+    }
+    #attendanceToast.success {
+      background: #dcfce7;
+      color: #166534;
+      border: 2px solid #22c55e;
+    }
+    #attendanceToast.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 2px solid #ef4444;
+    }
+    #attendanceToast .toast-title {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    #attendanceToast .toast-detail {
+      display: block;
+      font-size: 13px;
+    }
+    @media (max-width: 600px) {
+      #attendanceToast { top: 10px; padding: 12px 14px; font-size: 13px; }
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #b5121b;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #googleLogin {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    #accountInfo {
+      font-size: 13px;
+      color: #555;
+      overflow-wrap: anywhere;
+    }
+
+    .main-layout {
+      max-width: 1560px;
+      margin: 20px auto;
+      display: grid;
+      grid-template-columns: minmax(270px, .95fr) minmax(320px, 1.1fr) minmax(270px, .95fr);
+      gap: 14px;
+      text-align: left;
+      align-items: stretch;
+    }
+
+    .panel {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      min-width: 0;
+      box-shadow: 0 3px 14px rgba(0,0,0,.06);
+    }
+
+    .panel h3 {
+      margin: 0 0 14px;
+      color: #b5121b;
+      font-size: 17px;
+    }
+
+    .scanner-panel { text-align: center; }
+    .scanner-panel #reader { max-width: 520px; }
+    .scanner-panel #status { text-align: center; }
+
+    #faceCamera {
+      position: fixed !important; left: -10000px !important; top: 0 !important;
+      width: 320px !important; height: 240px !important; opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    .attendance-queue { display:flex; flex-direction:column; min-height:560px; max-height:760px; padding:0; border:1px solid #e2e8f0; border-radius:16px; background:#fff; text-align:left; overflow:hidden; }
+    .attendance-queue-header { background:#075e54; color:#fff; padding:17px 16px; }
+    .attendance-queue-header h3 { margin:0 0 5px; color:#fff; font-size:16px; }
+    .attendance-queue-header small { opacity:.88; }
+    .attendance-queue-content { padding:12px; overflow-y:auto; flex:1; }
+    .attendance-queue h4 { margin:0 0 10px; color:#0f172a; font-size:14px; }
+    .attendance-counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-bottom:12px; }
+    .attendance-count { background:#f1f5f9; border-radius:8px; padding:8px 5px; text-align:center; }
+    .attendance-count strong { display:block; font-size:20px; color:#0f172a; }
+    .attendance-count span { font-size:10px; color:#64748b; }
+    .attendance-table-wrap { overflow-x:auto; }
+    .attendance-table { width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed; }
+    .attendance-table th,.attendance-table td { padding:8px 5px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:middle; overflow-wrap:anywhere; }
+    .attendance-table th:nth-child(1) { width:39%; }
+    .attendance-table th:nth-child(2) { width:17%; }
+    .attendance-table th:nth-child(3) { width:29%; }
+    .attendance-table th:nth-child(4) { width:15%; }
+    .attendance-table th { color:#64748b; font-weight:700; }
+    .queue-badge { display:inline-block; border-radius:20px; padding:4px 7px; font-size:10px; font-weight:700; white-space:nowrap; background:#e2e8f0; color:#334155; }
+    .queue-badge.sending { background:#dbeafe; color:#1d4ed8; }
+    .queue-badge.saved { background:#dcfce7; color:#166534; }
+    .queue-badge.failed { background:#fee2e2; color:#991b1b; }
+    .queue-retry { width:auto; padding:5px 8px; border-radius:6px; background:#b5121b; font-size:11px; }
+    .attendance-queue-note { margin:9px 0 0; color:#64748b; font-size:11px; line-height:1.4; }
+
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 560px;
+      max-height: 760px;
+      background: #e9edef;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background: #075e54;
+      color: #fff;
+      padding: 17px 19px;
+      text-align: left;
+    }
+
+    .chat-header strong { display: block; font-size: 16px; }
+    .chat-header small { opacity: .85; }
+
+    #photoQueue {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-color: #e9edef;
+      background-image: radial-gradient(rgba(0,0,0,.035) .7px, transparent .7px);
+      background-size: 12px 12px;
+    }
+
+    .queue-empty {
+      margin: auto;
+      max-width: 230px;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: center;
+      background: rgba(255,255,255,.75);
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .chat-message {
+      align-self: flex-end;
+      width: min(100%, 310px);
+      background: #d9fdd3;
+      border-radius: 12px 12px 3px 12px;
+      padding: 10px 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.08);
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-message .employee-name {
+      font-weight: bold;
+      color: #075e54;
+      margin-bottom: 3px;
+    }
+
+    .chat-message .message-meta {
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 7px;
+    }
+
+    .chat-message img {
+      display: block;
+      width: 100%;
+      max-height: 150px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin: 6px 0;
+      background: #d1d5db;
+    }
+
+    .chat-message .upload-state {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 7px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chat-message .upload-state.done { color: #087443; }
+    .chat-message .upload-state.failed { color: #b91c1c; }
+    .chat-message .photo-retry {
+      display: block;
+      width: auto;
+      margin: 9px 0 0 auto;
+      padding: 7px 11px;
+      border-radius: 7px;
+      background: #b5121b;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .queue-summary {
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-top: 1px solid #d7dee3;
+      color: #475569;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    /* Tablet landscape: tiga panel selalu sejajar dalam satu layar. */
+    @media (min-width: 761px) and (max-width: 1100px) {
+      body { padding: 8px; }
+      .main-layout { grid-template-columns: minmax(0,.95fr) minmax(0,1.1fr) minmax(0,.95fr); gap:9px; margin:10px auto; }
+      .panel { padding:12px; }
+      .attendance-queue, .chat-panel { min-height:500px; max-height:calc(100vh - 175px); }
+      .attendance-queue-content, #photoQueue { padding:9px; }
+      .attendance-counts { gap:4px; }
+      .attendance-count { padding:7px 3px; }
+      .attendance-count strong { font-size:17px; }
+      .attendance-count span { font-size:9px; }
+      .attendance-table th,.attendance-table td { padding:7px 3px; font-size:10px; }
+      .queue-badge { font-size:9px; padding:3px 5px; }
+      .queue-retry { font-size:9px; padding:5px; }
+      .scanner-panel #reader { margin:10px auto; }
+      .scanner-panel #reader video { max-height:340px; object-fit:cover; }
+    }
+    .sound-control {
+      width:auto; min-width:150px; margin:0 auto 10px; padding:8px 12px;
+      border:1px solid #cbd5e1; border-radius:999px; background:#f8fafc;
+      color:#334155; font-size:12px; font-weight:700;
+    }
+    .sound-control.off { background:#f1f5f9; color:#64748b; }
+
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .main-layout { grid-template-columns: 1fr; gap:12px; margin:10px auto; }
+      .panel { padding:15px; }
+      .attendance-queue { min-height:360px; max-height:520px; }
+      .chat-panel { min-height:360px; max-height:520px; }
+      .attendance-table { min-width:0; }
+      .scanner-panel #reader { margin:12px auto; }
+    }
+
+  </style>
+</head>
+
+<body>
+  <div id="attendanceToast" role="alert" aria-live="assertive"></div>
+
+  <div style="max-width:1180px;margin:0 auto;text-align:center;">
+    <h2 style="margin-bottom:5px;">ABSENSI SISWA</h2>
+    <p style="margin-top:0;">MA MIFTAHUL FALAH CAPANG</p>
+    <div id="googleLogin"></div>
+    <p id="accountInfo">Login menggunakan akun resmi sekolah.</p>
+  </div>
+
+  <main class="main-layout">
+    <!-- PANEL 1: ROOM CHAT / ANTREAN DATA ABSENSI -->
+    <section class="attendance-queue">
+      <div class="attendance-queue-header">
+        <h3>ROOM CHAT ANTREAN</h3>
+        <small>Pantau status setiap scan sampai masuk Spreadsheet</small>
+      </div>
+      <div class="attendance-queue-content">
+        <div class="attendance-counts">
+          <div class="attendance-count"><strong id="countPending">0</strong><span>MENUNGGU</span></div>
+          <div class="attendance-count"><strong id="countSuccess">0</strong><span>BERHASIL</span></div>
+          <div class="attendance-count"><strong id="countFailed">0</strong><span>GAGAL</span></div>
+        </div>
+        <div class="attendance-table-wrap">
+          <table class="attendance-table">
+            <thead><tr><th>WAKTU / NAMA</th><th>AKTIVITAS</th><th>STATUS</th><th></th></tr></thead>
+            <tbody id="attendanceQueueRows">
+              <tr><td colspan="4" style="text-align:center;color:#64748b;">Belum ada antrean absensi.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="attendance-queue-note">
+          BERHASIL = sudah dikonfirmasi tersimpan di Google Spreadsheet. MENUNGGU = masih tersimpan di tablet dan belum dikonfirmasi server.
+        </p>
+      </div>
+    </section>
+
+    <!-- PANEL 2: SCANNER QR -->
+    <section class="panel scanner-panel">
+      <h3>SCANNER QR ABSENSI</h3>
+      <div id="reader"></div>
+
+      <video id="faceCamera" autoplay playsinline muted
+             style="display:none;"></video>
+      <canvas id="faceCanvas" style="display:none;"></canvas>
+
+      <div id="status" class="loading">
+        Menunggu login Google.
+      </div>
+
+      <button type="button" id="soundToggle" class="sound-control" onclick="toggleAttendanceSound()">🔊 SUARA: AKTIF</button>
+
+      <button id="startButton" onclick="startScanner()" disabled>
+        MULAI SCANNER
+      </button>
+    </section>
+
+    <!-- PANEL 3: FOTO YANG DIPROSES DI LATAR BELAKANG -->
+    <section class="panel chat-panel">
+      <div class="chat-header">
+        <strong>PROSES FOTO ABSENSI</strong>
+        <small>Pengiriman foto berjalan di latar belakang</small>
+        <button type="button" id="clearPhotoButton" class="queue-retry"
+                style="margin-top:10px;width:auto;"
+                onclick="clearPhotoHistoryManually()">
+          BERSIHKAN FOTO
+        </button>
+      </div>
+      <div id="photoQueue">
+        <div class="queue-empty" id="queueEmpty">
+          Belum ada foto yang diproses.<br>
+          Setelah siswa scan QR, status foto akan muncul di sini.
+        </div>
+      </div>
+      <div class="queue-summary" id="queueSummary">
+        Menunggu absensi pertama.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // =====================================
+    // KONFIGURASI SEKOLAH
+    // =====================================
+
+    // Ganti setelah Web App Apps Script sekolah selesai di-deploy.
+    const SCRIPT_URL =
+      'ISI_URL_WEB_APP_APPS_SCRIPT_SEKOLAH';
+    
+    // Ganti dengan OAuth Client ID dari Google Cloud sekolah.
+    const GOOGLE_CLIENT_ID =
+      'ISI_OAUTH_CLIENT_ID_SEKOLAH';
+    
+    const OFFICIAL_EMAIL = 'absensimamiftahulfalahcapang@gmail.com';
+
+    // =====================================
+    // NOTIFIKASI SUARA (TIDAK MENAHAN SCANNER)
+    // =====================================
+    const SOUND_SETTING_KEY = 'miftahulfalah_attendance_sound_enabled';
+    let attendanceAudioContext = null;
+    let attendanceSoundEnabled = true;
+    try { attendanceSoundEnabled = localStorage.getItem(SOUND_SETTING_KEY) !== 'false'; } catch (e) {}
+
+    function updateSoundButton() {
+      const button = document.getElementById('soundToggle');
+      if (!button) return;
+      button.textContent = attendanceSoundEnabled ? '🔊 SUARA: AKTIF' : '🔇 SUARA: MATI';
+      button.classList.toggle('off', !attendanceSoundEnabled);
+    }
+
+    function unlockAttendanceAudio() {
+      if (!attendanceSoundEnabled) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        if (!attendanceAudioContext) attendanceAudioContext = new AudioContextClass();
+        if (attendanceAudioContext.state === 'suspended') {
+          // Dipanggil dari sentuhan tombol MULAI SCANNER agar diizinkan browser.
+          attendanceAudioContext.resume().catch(() => {});
+        }
+      } catch (error) { console.warn('Audio tidak tersedia:', error); }
+    }
+
+    function playAttendanceSound(kind) {
+      if (!attendanceSoundEnabled) return;
+      try {
+        unlockAttendanceAudio();
+        const ctx = attendanceAudioContext;
+        if (!ctx || ctx.state !== 'running') return;
+        const patterns = {
+          queued: [{ f: 880, d: 0.10, gap: 0.00 }],
+          success: [{ f: 880, d: 0.10, gap: 0.04 }, { f: 1175, d: 0.13, gap: 0.00 }],
+          failed: [{ f: 330, d: 0.22, gap: 0.04 }, { f: 220, d: 0.28, gap: 0.00 }],
+          invalid: [{ f: 440, d: 0.07, gap: 0.06 }, { f: 440, d: 0.07, gap: 0.06 }, { f: 440, d: 0.07, gap: 0.00 }]
+        };
+        const notes = patterns[kind] || patterns.queued;
+        let at = ctx.currentTime + 0.015;
+        notes.forEach(note => {
+          const oscillator = ctx.createOscillator();
+          const gain = ctx.createGain();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(note.f, at);
+          gain.gain.setValueAtTime(0.0001, at);
+          gain.gain.exponentialRampToValueAtTime(0.16, at + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.0001, at + note.d);
+          oscillator.connect(gain);
+          gain.connect(ctx.destination);
+          oscillator.start(at);
+          oscillator.stop(at + note.d + 0.015);
+          at += note.d + note.gap;
+        });
+      } catch (error) { console.warn('Gagal memutar notifikasi suara:', error); }
+    }
+
+    function toggleAttendanceSound() {
+      attendanceSoundEnabled = !attendanceSoundEnabled;
+      try { localStorage.setItem(SOUND_SETTING_KEY, String(attendanceSoundEnabled)); } catch (e) {}
+      updateSoundButton();
+      if (attendanceSoundEnabled) {
+        unlockAttendanceAudio();
+        // Bunyi pendek sebagai tes saat tombol diaktifkan.
+        playAttendanceSound('queued');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', updateSoundButton);
+    updateSoundButton();
+
+    // =====================================
+    // VARIABEL
+    // =====================================
+
+    const statusBox = document.getElementById('status');
+    const startButton = document.getElementById('startButton');
+    const accountInfo = document.getElementById('accountInfo');
+
+    const faceCamera = document.getElementById('faceCamera');
+    const faceCanvas = document.getElementById('faceCanvas');
+
+    let scanner = null;
+    let isProcessing = false;
+    let lastScanTime = 0;
+    let googleIdToken = '';
+    
+    let faceStream = null;
+    let isCapturingFace = false;
+
+    
+// =====================================
+// RESET RIWAYAT PANEL FOTO SETIAP 12 JAM
+// Hanya membersihkan pesan yang sudah selesai/gagal.
+// Upload yang masih berjalan tidak pernah dihapus.
+// =====================================
+const PHOTO_HISTORY_RESET_KEY = 'absensi_photo_history_reset_at';
+const PHOTO_HISTORY_INTERVAL = 60 * 60 * 1000; // 1 jam
+
+function ensureQueueEmptyMessage() {
+  const queue = document.getElementById('photoQueue');
+  if (!queue.querySelector('.chat-message') &&
+      !queue.querySelector('.queue-empty')) {
+    const empty = document.createElement('div');
+    empty.className = 'queue-empty';
+    empty.id = 'queueEmpty';
+    empty.innerHTML = 'Belum ada foto yang diproses.<br>Setelah siswa scan QR, status foto akan muncul di sini.';
+    queue.appendChild(empty);
+  }
+}
+
+async function resetCompletedPhotoHistory() {
+  // Hapus foto BERHASIL setelah satu jam sejak upload selesai.
+  // Foto GAGAL dan yang masih diproses tetap disimpan.
+  try {
+    const tasks = await getPhotoTasks();
+    const now = Date.now();
+
+    for (const task of tasks) {
+      if (task.status === 'DONE' &&
+          task.completedAt &&
+          now - Number(task.completedAt) >= PHOTO_HISTORY_INTERVAL) {
+        await deletePhotoTask(task.requestId);
+        const card = document.getElementById('photo-' + task.requestId);
+        if (card) card.remove();
+      }
+    }
+  } catch (error) {
+    console.warn('Gagal membersihkan riwayat foto:', error);
+  }
+
+  ensureQueueEmptyMessage();
+  updateQueueSummary();
+}
+
+// Tombol manual untuk membersihkan foto yang sudah selesai/gagal.
+// Foto yang sedang diambil atau sedang diunggah tidak dihapus.
+async function clearPhotoHistoryManually() {
+  const button = document.getElementById('clearPhotoButton');
+  if (button) button.disabled = true;
+
+  try {
+    const tasks = await getPhotoTasks();
+    let cleaned = 0;
+    let keptActive = 0;
+
+    for (const task of tasks) {
+      const isActive =
+        task.status === 'CAPTURING' ||
+        activePhotoUploads.has(task.requestId);
+
+      if (isActive) {
+        keptActive++;
+        continue;
+      }
+
+      // Hapus hanya salinan lokal/riwayat pada tablet.
+      // File yang sudah tersimpan di Google Drive tidak disentuh.
+      await deletePhotoTask(task.requestId);
+      const card = document.getElementById('photo-' + task.requestId);
+      if (card) card.remove();
+      cleaned++;
+    }
+
+    ensureQueueEmptyMessage();
+    updateQueueSummary();
+
+    showAttendanceNotification(
+      'FOTO DIBERSIHKAN',
+      cleaned + ' riwayat foto dihapus dari tablet.' +
+        (keptActive ? ' ' + keptActive + ' foto yang masih diproses dipertahankan.' : '') +
+        ' File di Google Drive tidak dihapus.',
+      'success'
+    );
+  } catch (error) {
+    showAttendanceNotification(
+      'GAGAL MEMBERSIHKAN FOTO',
+      error.message || String(error),
+      'error'
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function initializePhotoHistoryReset() {
+  // Pemeriksaan berdasarkan waktu sukses masing-masing foto.
+  resetCompletedPhotoHistory();
+  setInterval(resetCompletedPhotoHistory, 60 * 1000);
+}
+
+async function captureFacePhoto() {
+  if (isCapturingFace) {
+    throw new Error('Kamera sedang mengambil foto.');
+  }
+
+  isCapturingFace = true;
+
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Browser tidak mendukung akses kamera.');
+    }
+
+    showMessage('MEMBUKA KAMERA DEPAN...', 'loading');
+
+    faceStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'user' },
+        width: { ideal: 320 },
+        height: { ideal: 240 }
+      },
+      audio: false
+    });
+
+    faceCamera.srcObject = faceStream;
+    faceCamera.style.display = 'block';
+
+    await faceCamera.play();
+
+    // Tunggu sampai kamera menghasilkan gambar.
+    await new Promise((resolve, reject) => {
+      const start = Date.now();
+
+      function checkCamera() {
+        if (
+          faceCamera.readyState >= 2 &&
+          faceCamera.videoWidth > 0 &&
+          faceCamera.videoHeight > 0
+        ) {
+          resolve();
+          return;
+        }
+
+        if (Date.now() - start > 10000) {
+          reject(new Error('Kamera depan gagal menghasilkan gambar.'));
+          return;
+        }
+
+        requestAnimationFrame(checkCamera);
+      }
+
+      checkCamera();
+    });
+
+    // Beri waktu sensor depan menyesuaikan exposure, fokus, dan white balance.
+    // Ini mencegah frame awal yang masih putih/gelap tertangkap sebagai foto.
+    await new Promise(resolve => setTimeout(resolve, 1400));
+    await new Promise(resolve => requestAnimationFrame(() =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    ));
+
+    showMessage('MENGAMBIL FOTO WAJAH...', 'loading');
+
+    const context = faceCanvas.getContext('2d');
+
+    faceCanvas.width = faceCamera.videoWidth;
+    faceCanvas.height = faceCamera.videoHeight;
+
+    context.drawImage(
+      faceCamera,
+      0,
+      0,
+      faceCanvas.width,
+      faceCanvas.height
+    );
+
+    const imageData = faceCanvas.toDataURL('image/jpeg', 0.4);
+
+    if (!imageData || imageData.length < 1000) {
+      throw new Error('Foto gagal dibuat.');
+    }
+
+    return imageData;
+
+  } finally {
+    if (faceStream) {
+      faceStream.getTracks().forEach(track => track.stop());
+      faceStream = null;
+    }
+
+    faceCamera.srcObject = null;
+    faceCamera.style.display = 'none';
+    isCapturingFace = false;
+  }
+}
+function addPhotoQueueItem(response) {
+  const empty = document.getElementById('queueEmpty');
+  if (empty) empty.remove();
+
+  const item = document.createElement('div');
+  item.className = 'chat-message';
+  item.id = 'photo-' + response.requestId;
+
+  const name = document.createElement('div');
+  name.className = 'employee-name';
+  name.textContent = response.name || 'Siswa';
+
+  const meta = document.createElement('div');
+  meta.className = 'message-meta';
+  meta.textContent = (response.activity || '-') + ' · ' +
+    (response.time || '-') + ' · ' + (response.date || '-');
+
+  const state = document.createElement('div');
+  state.className = 'upload-state';
+  state.id = 'photo-state-' + response.requestId;
+  state.textContent = 'Menunggu pengambilan foto...';
+
+  item.appendChild(name);
+  item.appendChild(meta);
+  item.appendChild(state);
+
+  const queue = document.getElementById('photoQueue');
+  queue.appendChild(item);
+  queue.scrollTop = queue.scrollHeight;
+  updateQueueSummary();
+  return item;
+}
+
+function updatePhotoState(requestId, message, type) {
+  const state = document.getElementById('photo-state-' + requestId);
+  if (!state) return;
+
+  state.className = 'upload-state' + (type ? ' ' + type : '');
+  state.textContent = message;
+  updateQueueSummary();
+}
+
+function updateQueueSummary() {
+  const states = Array.from(
+    document.querySelectorAll('#photoQueue .upload-state')
+  );
+  const done = states.filter(el => el.classList.contains('done')).length;
+  const failed = states.filter(el => el.classList.contains('failed')).length;
+  const running = states.length - done - failed;
+
+  document.getElementById('queueSummary').textContent =
+    states.length + ' foto · ' + running + ' diproses · ' +
+    done + ' berhasil · ' + failed + ' perlu diperiksa';
+}
+
+function checkPhotoStatus(requestId, token) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'photoStatus_' +
+      String(requestId).replace(/[^a-zA-Z0-9_$]/g, '') +
+      '_' + Date.now();
+
+    const script = document.createElement('script');
+    let settled = false;
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+      fn(value);
+    };
+
+    const timeout = setTimeout(() => {
+      finish(reject, new Error('Konfirmasi server foto timeout.'));
+    }, 10000);
+
+    window[callbackName] = result => finish(resolve, result);
+
+    const params = new URLSearchParams({
+      action: 'photostatus',
+      requestId: requestId,
+      token: token,
+      callback: callbackName
+    });
+
+    script.src = SCRIPT_URL + '?' + params.toString();
+    script.onerror = () => finish(
+      reject,
+      new Error('Gagal memeriksa status foto.')
+    );
+    document.body.appendChild(script);
+  });
+}
+
+function submitPhotoInBackground(imageData, requestId, token) {
+  const iframe = document.createElement('iframe');
+  const frameName = 'photoUpload_' + requestId;
+  iframe.name = frameName;
+  iframe.style.display = 'none';
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = SCRIPT_URL;
+  form.target = frameName;
+  form.enctype = 'application/x-www-form-urlencoded';
+  form.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'payload';
+  input.value = JSON.stringify({
+    action: 'uploadPhoto',
+    requestId: requestId,
+    token: token,
+    imageData: imageData
+  });
+  form.appendChild(input);
+
+  document.body.appendChild(iframe);
+  document.body.appendChild(form);
+  form.submit();
+
+  return { iframe, form };
+}
+
+async function runPhotoUpload(imageData, requestId, token, attempt) {
+  if (activePhotoUploads.has(requestId)) return;
+  activePhotoUploads.add(requestId);
+
+  let lastError = null;
+
+  try {
+    const tasks = await getPhotoTasks();
+    const task = tasks.find(x => x.requestId === requestId);
+    if (!task || !task.serverReady || !imageData) return;
+
+    const card = document.getElementById('photo-' + requestId);
+    const retryButton = card && card.querySelector('.photo-retry');
+    if (retryButton) retryButton.remove();
+
+    if (!navigator.onLine) {
+      throw new Error('Koneksi internet terputus. Foto tetap tersimpan di tablet.');
+    }
+
+    // Tiga percobaan otomatis. Jika tetap gagal, foto tetap di IndexedDB
+    // dan pengguna dapat mengirim ulang melalui tombol pada kartu foto.
+    for (let currentAttempt = 1; currentAttempt <= 3; currentAttempt++) {
+      let uploadElements = null;
+
+      try {
+        if (!navigator.onLine) {
+          throw new Error('Koneksi internet terputus. Foto tetap tersimpan di tablet.');
+        }
+
+        updatePhotoState(
+          requestId,
+          currentAttempt === 1
+            ? 'Mengunggah foto ke Google Drive...'
+            : 'Mencoba upload ulang (' + currentAttempt + '/3)...',
+          ''
+        );
+
+        uploadElements = submitPhotoInBackground(imageData, requestId, token);
+
+        for (let check = 0; check < 12; check++) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          if (!navigator.onLine) {
+            throw new Error('Koneksi internet terputus. Foto tetap tersimpan di tablet.');
+          }
+
+          let result;
+          try {
+            result = await checkPhotoStatus(requestId, token);
+          } catch (statusError) {
+            continue;
+          }
+
+          if (result && result.success) {
+            task.status = 'DONE';
+            task.completedAt = Date.now();
+            task.imageData = '';
+            task.lastError = '';
+            await savePhotoTask(task);
+            updatePhotoState(requestId, '✓ Foto berhasil tersimpan di Google Drive.', 'done');
+
+            const successCard = document.getElementById('photo-' + requestId);
+            const button = successCard && successCard.querySelector('.photo-retry');
+            if (button) button.remove();
+            return;
+          }
+
+          if (result && result.message &&
+              result.message !== 'Foto belum tersimpan.') {
+            throw new Error(result.message);
+          }
+        }
+
+        throw new Error('Belum ada konfirmasi dari Google Drive.');
+      } catch (error) {
+        lastError = error;
+      } finally {
+        if (uploadElements) {
+          uploadElements.form.remove();
+          uploadElements.iframe.remove();
+        }
+      }
+
+      if (currentAttempt < 3 && navigator.onLine) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        break;
+      }
+    }
+
+    const latestTasks = await getPhotoTasks().catch(() => []);
+    const latestTask = latestTasks.find(x => x.requestId === requestId);
+    if (latestTask) {
+      latestTask.status = 'FAILED';
+      latestTask.lastError = lastError
+        ? (lastError.message || String(lastError))
+        : 'Upload foto belum berhasil.';
+      // imageData tetap disimpan agar dapat dicoba ulang.
+      await savePhotoTask(latestTask);
+    }
+
+    const errorMessage = latestTask && latestTask.lastError
+      ? latestTask.lastError
+      : 'Periksa koneksi dan folder Google Drive.';
+    updatePhotoState(requestId, '✕ Upload gagal: ' + errorMessage, 'failed');
+    addPhotoRetryButton(requestId, 'upload');
+
+  } catch (error) {
+    const latestTasks = await getPhotoTasks().catch(() => []);
+    const latestTask = latestTasks.find(x => x.requestId === requestId);
+    if (latestTask) {
+      latestTask.status = 'FAILED';
+      latestTask.lastError = error.message || String(error);
+      await savePhotoTask(latestTask);
+    }
+
+    updatePhotoState(
+      requestId,
+      '✕ Upload gagal: ' + (error.message || 'Periksa koneksi internet.'),
+      'failed'
+    );
+    addPhotoRetryButton(requestId, 'upload');
+  } finally {
+    activePhotoUploads.delete(requestId);
+  }
+}
+
+function startBackgroundPhotoUpload(imageData, requestId, token) {
+  runPhotoUpload(imageData, requestId, token, 1);
+}
+
+
+// TAMPILAN STATUS
+    // =====================================
+
+    function showMessage(message, type) {
+      statusBox.className = type;
+      statusBox.textContent = message;
+    }
+
+    let attendanceToastTimer = null;
+
+    function showAttendanceNotification(title, detail, type) {
+      const toast = document.getElementById('attendanceToast');
+      if (!toast) return;
+
+      toast.className = type || 'success';
+      toast.replaceChildren();
+
+      const titleNode = document.createElement('span');
+      titleNode.className = 'toast-title';
+      titleNode.textContent = title;
+
+      const detailNode = document.createElement('span');
+      detailNode.className = 'toast-detail';
+      detailNode.textContent = detail || '';
+
+      toast.appendChild(titleNode);
+      toast.appendChild(detailNode);
+      toast.classList.add('show');
+
+      if (attendanceToastTimer) clearTimeout(attendanceToastTimer);
+      attendanceToastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 5000);
+    }
+
+    // =====================================
+    // DECODE EMAIL UNTUK TAMPILAN
+    // VERIFIKASI ASLI TETAP DI SERVER
+    // =====================================
+
+    function getEmailFromCredential(jwt) {
+      try {
+        const payload = jwt.split('.')[1];
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const decoded = atob(normalized);
+        const bytes = Uint8Array.from(decoded, c => c.charCodeAt(0));
+        return JSON.parse(new TextDecoder().decode(bytes)).email || '';
+      } catch (error) {
+        return '';
+      }
+    }
+
+    // =====================================
+    // LOGIN GOOGLE
+    // =====================================
+
+    function initializeGoogleLogin() {
+      if (!window.google || !google.accounts) {
+        setTimeout(initializeGoogleLogin, 500);
+        return;
+      }
+
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleLogin,
+        auto_select: true
+      });
+
+      // Pulihkan sesi dari tab yang sama setelah halaman di-refresh.
+      // Token tetap diverifikasi ulang oleh server saat scan.
+      restoreGoogleSession();
+
+      google.accounts.id.renderButton(
+        document.getElementById('googleLogin'),
+        {
+          theme: 'outline',
+          size: 'large',
+          shape: 'rectangular',
+          text: 'signin_with',
+          width: 280
+        }
+      );
+    }
+
+    function handleGoogleLogin(response) {
+      const credential = response.credential;
+      const email = getEmailFromCredential(credential).toLowerCase();
+
+      if (email !== OFFICIAL_EMAIL) {
+        googleIdToken = '';
+        startButton.disabled = true;
+
+        accountInfo.textContent = 'Akun tidak diizinkan: ' + (email || 'tidak diketahui');
+
+        showMessage(
+          'LOGIN DITOLAK!\nGunakan akun ' + OFFICIAL_EMAIL,
+          'error'
+        );
+        return;
+      }
+
+      googleIdToken = credential;
+
+      try {
+        sessionStorage.setItem('absensi_google_id_token_miftahulfalah', credential);
+      } catch (storageError) {
+        // Login tetap dapat dipakai selama halaman tidak di-refresh.
+      }
+
+      accountInfo.textContent = 'Login sebagai: ' + email;
+      startButton.disabled = false;
+      document.getElementById('googleLogin').style.display = 'none';
+
+      showMessage(
+        'LOGIN BERHASIL.\nMemeriksa antrean absensi...',
+        'success'
+      );
+      syncPendingAttendanceQueue();
+      restorePhotoTasks();
+    }
+
+    function restoreGoogleSession() {
+      let savedToken = '';
+
+      try {
+        savedToken = sessionStorage.getItem('absensi_google_id_token_miftahulfalah') || '';
+      } catch (storageError) {
+        savedToken = '';
+      }
+
+      if (!savedToken) return;
+
+      const email = getEmailFromCredential(savedToken).toLowerCase();
+
+      let payload = {};
+      try {
+        const part = savedToken.split('.')[1];
+        const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+        const decoded = atob(normalized);
+        const bytes = Uint8Array.from(decoded, c => c.charCodeAt(0));
+        payload = JSON.parse(new TextDecoder().decode(bytes));
+      } catch (error) {
+        payload = {};
+      }
+
+      const stillValid = Number(payload.exp || 0) >
+        Math.floor(Date.now() / 1000);
+
+      if (email !== OFFICIAL_EMAIL || !stillValid) {
+        try {
+          sessionStorage.removeItem('absensi_google_id_token_miftahulfalah');
+        } catch (storageError) {}
+        return;
+      }
+
+      googleIdToken = savedToken;
+      accountInfo.textContent = 'Login sebagai: ' + email;
+      startButton.disabled = false;
+      document.getElementById('googleLogin').style.display = 'none';
+
+      showMessage(
+        'SESI LOGIN DIPULIHKAN.\nMemeriksa antrean absensi...',
+        'success'
+      );
+      syncPendingAttendanceQueue();
+      restorePhotoTasks();
+    }
+
+    window.addEventListener('load', () => {
+      initializeGoogleLogin();
+      initializePhotoHistoryReset();
+      renderAttendanceQueue();
+      restorePhotoTasks();
+      // Bersihkan tampilan BERHASIL yang melewati 1 jam tanpa menghapus GAGAL.
+      setInterval(renderAttendanceQueue, 60 * 1000);
+    });
+
+    // =====================================
+    // DETEKSI PERANGKAT
+    // =====================================
+
+    function detectDevice() {
+      const ua = navigator.userAgent;
+
+      if (/iPad|Android/i.test(ua) ||
+          (navigator.maxTouchPoints > 1 &&
+           Math.min(screen.width, screen.height) >= 600)) {
+        return 'TABLET';
+      }
+
+      if (/Mobile|iPhone|iPod/i.test(ua)) return 'HP';
+
+      return 'KOMPUTER';
+    }
+
+    // =====================================
+    // AMBIL TOKEN QR
+    // =====================================
+
+    function extractToken(decodedText) {
+      try {
+        return new URL(decodedText).searchParams.get('token') || '';
+      } catch (error) {
+        return '';
+      }
+    }
+
+    // =====================================
+    // ANTREAN ABSENSI LOKAL (INDEXEDDB)
+    // =====================================
+    const ATTENDANCE_DB_NAME = 'MIFTAHUL_FALAH_ABSENSI_DB';
+    const ATTENDANCE_STORE = 'pending_attendance';
+    const PHOTO_TASK_STORE = 'photo_tasks';
+    let attendanceDbPromise = null;
+    let isSyncingAttendanceQueue = false;
+
+    function openAttendanceDb() {
+      if (attendanceDbPromise) return attendanceDbPromise;
+      attendanceDbPromise = new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('Browser tidak mendukung penyimpanan antrean lokal.'));
+          return;
+        }
+        // Versi 2 menambahkan penyimpanan foto tanpa menghapus antrean lama.
+        const request = indexedDB.open(ATTENDANCE_DB_NAME, 2);
+        request.onupgradeneeded = event => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(ATTENDANCE_STORE)) {
+            db.createObjectStore(ATTENDANCE_STORE, { keyPath: 'requestId' });
+          }
+          if (!db.objectStoreNames.contains(PHOTO_TASK_STORE)) {
+            db.createObjectStore(PHOTO_TASK_STORE, { keyPath: 'requestId' });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Gagal membuka antrean lokal.'));
+      });
+      return attendanceDbPromise;
+    }
+
+    async function savePendingAttendance(item) {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(ATTENDANCE_STORE, 'readwrite');
+        tx.objectStore(ATTENDANCE_STORE).put(item);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error('Gagal menyimpan antrean absensi.'));
+        tx.onabort = () => reject(tx.error || new Error('Penyimpanan antrean dibatalkan.'));
+      });
+    }
+
+    async function removePendingAttendance(requestId) {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(ATTENDANCE_STORE, 'readwrite');
+        tx.objectStore(ATTENDANCE_STORE).delete(requestId);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error('Gagal memperbarui antrean.'));
+      });
+    }
+
+    async function getPendingAttendance() {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(ATTENDANCE_STORE, 'readonly');
+        const request = tx.objectStore(ATTENDANCE_STORE).getAll();
+        request.onsuccess = () => resolve((request.result || []).sort((a, b) => a.createdAt - b.createdAt));
+        request.onerror = () => reject(request.error || new Error('Gagal membaca antrean absensi.'));
+      });
+    }
+
+    async function savePhotoTask(task) {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_TASK_STORE, 'readwrite');
+        tx.objectStore(PHOTO_TASK_STORE).put(task);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error('Gagal menyimpan foto di tablet.'));
+        tx.onabort = () => reject(tx.error || new Error('Penyimpanan foto dibatalkan.'));
+      });
+    }
+
+    async function getPhotoTasks() {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_TASK_STORE, 'readonly');
+        const request = tx.objectStore(PHOTO_TASK_STORE).getAll();
+        request.onsuccess = () => resolve((request.result || []).sort((a,b) => a.createdAt - b.createdAt));
+        request.onerror = () => reject(request.error || new Error('Gagal membaca antrean foto.'));
+      });
+    }
+
+    async function deletePhotoTask(requestId) {
+      const db = await openAttendanceDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_TASK_STORE, 'readwrite');
+        tx.objectStore(PHOTO_TASK_STORE).delete(requestId);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error('Gagal membersihkan riwayat foto.'));
+      });
+    }
+
+    const ATTENDANCE_HISTORY_KEY = 'miftahulfalah_attendance_queue_history_v1';
+
+    const ATTENDANCE_SUCCESS_HISTORY_TTL = 60 * 60 * 1000; // 1 jam
+
+    function readAttendanceHistory() {
+      try {
+        const data = JSON.parse(localStorage.getItem(ATTENDANCE_HISTORY_KEY) || '[]');
+        if (!Array.isArray(data)) return [];
+        const now = Date.now();
+        // Riwayat BERHASIL hanya ditampilkan maksimal 12 jam.
+        // Riwayat GAGAL tidak ikut terhapus otomatis.
+        const kept = data.filter(item => {
+          if (item.status !== 'SUCCESS') return true;
+          const completedAt = Number(item.completedAt || item.createdAt || 0);
+          return completedAt && (now - completedAt < ATTENDANCE_SUCCESS_HISTORY_TTL);
+        });
+        if (kept.length !== data.length) {
+          localStorage.setItem(ATTENDANCE_HISTORY_KEY, JSON.stringify(kept.slice(-100)));
+        }
+        return kept;
+      } catch (e) { return []; }
+    }
+
+    function writeAttendanceHistory(items) {
+      try {
+        // Jangan pernah membuang item GAGAL hanya karena batas riwayat.
+        const failed = items.filter(item => item.status === 'FAILED');
+        const others = items.filter(item => item.status !== 'FAILED').slice(-100);
+        localStorage.setItem(ATTENDANCE_HISTORY_KEY, JSON.stringify([...others, ...failed]));
+      } catch (e) { console.warn('Riwayat antrean tidak dapat disimpan:', e); }
+    }
+
+    function saveAttendanceHistory(item) {
+      const items = readAttendanceHistory();
+      const index = items.findIndex(x => x.requestId === item.requestId);
+      if (index >= 0) items[index] = { ...items[index], ...item };
+      else items.push(item);
+      writeAttendanceHistory(items);
+      renderAttendanceQueue();
+    }
+
+    async function renderAttendanceQueue() {
+      const body = document.getElementById('attendanceQueueRows');
+      if (!body) return;
+      let pending = [];
+      try { pending = await getPendingAttendance(); } catch (e) {}
+      const history = readAttendanceHistory();
+      const pendingIds = new Set(pending.map(x => x.requestId));
+      const rows = [
+        ...pending.map(item => ({ ...item, status: item.status || 'PENDING',
+          name: item.name || 'Menunggu konfirmasi server', activity: item.activity || '-' })),
+        ...history.filter(item => !pendingIds.has(item.requestId))
+      ].sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      const waitingCount = pending.filter(x => x.status !== 'FAILED').length;
+      const successCount = history.filter(x => x.status === 'SUCCESS' && !pendingIds.has(x.requestId)).length;
+      const failedCount = pending.filter(x => x.status === 'FAILED').length +
+        history.filter(x => x.status === 'FAILED' && !pendingIds.has(x.requestId)).length;
+      document.getElementById('countPending').textContent = waitingCount;
+      document.getElementById('countSuccess').textContent = successCount;
+      document.getElementById('countFailed').textContent = failedCount;
+
+      body.replaceChildren();
+      if (!rows.length) {
+        const tr = document.createElement('tr'), td = document.createElement('td');
+        td.colSpan = 4; td.style.textAlign = 'center'; td.style.color = '#64748b';
+        td.textContent = 'Belum ada antrean absensi.'; tr.appendChild(td); body.appendChild(tr);
+        return;
+      }
+      rows.forEach(item => {
+        const tr = document.createElement('tr');
+        const who = document.createElement('td');
+        const name = document.createElement('strong'); name.textContent = item.name || 'Siswa';
+        const time = document.createElement('div'); time.style.color = '#64748b'; time.style.fontSize = '10px';
+        time.textContent = (item.time || item.scannedAt || '-') + (item.date ? ' · ' + item.date : '');
+        who.append(name,time);
+        const activity = document.createElement('td'); activity.textContent = item.activity || '-';
+        const statusCell = document.createElement('td'), badge = document.createElement('span');
+        badge.className = 'queue-badge';
+        if (item.status === 'SUCCESS') { badge.classList.add('saved'); badge.textContent = '✓ TERSIMPAN'; }
+        else if (item.status === 'FAILED') { badge.classList.add('failed'); badge.textContent = '✕ GAGAL'; }
+        else { badge.classList.add('sending'); badge.textContent = item.status === 'SENDING' ? 'DIPROSES' : 'MENUNGGU'; }
+        statusCell.appendChild(badge);
+        const actionCell = document.createElement('td');
+        if (pendingIds.has(item.requestId)) {
+          const retry = document.createElement('button'); retry.className = 'queue-retry';
+          retry.type = 'button'; retry.textContent = 'Coba lagi';
+          retry.addEventListener('click', () => retryAttendance(item.requestId));
+          actionCell.appendChild(retry);
+        }
+        tr.append(who,activity,statusCell,actionCell); body.appendChild(tr);
+      });
+    }
+
+    // Foto dibuat segera setelah transaksi aman tersimpan di IndexedDB.
+    // File foto tetap berada di tablet sampai server mengonfirmasi upload.
+    const photoCaptureTasks = [];
+    let isPhotoCaptureRunning = false;
+    let photoCameraBusy = false;
+    const activePhotoUploads = new Set();
+
+    async function enqueuePhotoCapture(response, item) {
+      if (!response || !response.requestId) return;
+      const requestId = response.requestId;
+      let task = (await getPhotoTasks()).find(x => x.requestId === requestId);
+      if (!task) {
+        task = {
+          requestId,
+          token: item.token,
+          createdAt: item.createdAt || Date.now(),
+          name: response.name || item.name || 'Menunggu konfirmasi server',
+          activity: response.activity || item.activity || '-',
+          time: response.time || '',
+          date: response.date || '',
+          imageData: '',
+          serverReady: false,
+          status: 'CAPTURING'
+        };
+        await savePhotoTask(task);
+      }
+      let queueItem = document.getElementById('photo-' + requestId);
+      if (!queueItem) queueItem = addPhotoQueueItem(task);
+      if (!task.imageData && !photoCaptureTasks.some(x => x.requestId === requestId)) {
+        photoCaptureTasks.push({ requestId, response: task, item: { token: task.token }, queueItem });
+      } else if (task.imageData) {
+        showPhotoPreview(queueItem, task.imageData);
+        updatePhotoState(requestId,
+          task.serverReady ? 'Foto tersimpan di tablet. Menunggu upload...' : 'Foto tersimpan di tablet. Menunggu konfirmasi absensi...',
+          '');
+        if (task.serverReady) startBackgroundPhotoUpload(task.imageData, requestId, task.token);
+      }
+      processPhotoCaptureQueue();
+    }
+
+    function showPhotoPreview(queueItem, imageData) {
+      if (!queueItem || queueItem.querySelector('img')) return;
+      const preview = document.createElement('img');
+      preview.src = imageData;
+      preview.alt = 'Foto absensi';
+      queueItem.insertBefore(preview, queueItem.querySelector('.upload-state'));
+    }
+
+    async function markPhotoServerReady(response, item) {
+      const requestId = response.requestId || item.requestId;
+      const tasks = await getPhotoTasks();
+      let task = tasks.find(x => x.requestId === requestId);
+      if (!task) {
+        task = {
+          requestId, token: item.token, createdAt: item.createdAt || Date.now(),
+          imageData: '', status: 'CAPTURING'
+        };
+      }
+      Object.assign(task, {
+        serverReady: true,
+        name: response.name || task.name || item.name || 'Siswa',
+        activity: response.activity || task.activity || item.activity || '-',
+        time: response.time || task.time || '',
+        date: response.date || task.date || ''
+      });
+      await savePhotoTask(task);
+      const card = document.getElementById('photo-' + requestId);
+      if (card) {
+        const name = card.querySelector('.employee-name');
+        const meta = card.querySelector('.message-meta');
+        if (name) name.textContent = task.name;
+        if (meta) meta.textContent = task.activity + ' · ' + (task.time || '-') + ' · ' + (task.date || '-');
+      }
+      if (task.imageData) startBackgroundPhotoUpload(task.imageData, requestId, task.token);
+    }
+
+    async function processPhotoCaptureQueue() {
+      if (isPhotoCaptureRunning) return;
+      isPhotoCaptureRunning = true;
+      try {
+        while (photoCaptureTasks.length) {
+          const task = photoCaptureTasks.shift();
+          const response = task.response;
+          const requestId = response.requestId;
+          photoCameraBusy = true;
+          try {
+            if (scanner && scanner.isScanning) await scanner.stop();
+            updatePhotoState(requestId, 'Mengambil foto wajah...', '');
+            const imageData = await captureFacePhoto();
+            const saved = (await getPhotoTasks()).find(x => x.requestId === requestId) || {};
+            saved.requestId = requestId;
+            saved.token = task.item.token;
+            saved.imageData = imageData;
+            saved.status = 'PHOTO_SAVED';
+            saved.lastError = '';
+            await savePhotoTask(saved);
+            showPhotoPreview(task.queueItem, imageData);
+            updatePhotoState(requestId,
+              saved.serverReady ? 'Foto tersimpan di tablet. Mengunggah ke Google Drive...' :
+                'Foto aman tersimpan di tablet. Menunggu konfirmasi absensi...',
+              '');
+            if (saved.serverReady) startBackgroundPhotoUpload(imageData, requestId, saved.token);
+          } catch (photoError) {
+            const saved = (await getPhotoTasks()).find(x => x.requestId === requestId) || {
+              requestId, token: task.item.token, createdAt: Date.now()
+            };
+            saved.status = 'FAILED';
+            saved.lastError = photoError.message || String(photoError);
+            await savePhotoTask(saved);
+            updatePhotoState(requestId,
+              '✕ Foto gagal diambil: ' + saved.lastError + ' — tekan Coba foto lagi.',
+              'failed');
+            addPhotoRetryButton(requestId, 'capture');
+            console.error('ERROR AMBIL FOTO:', photoError);
+          } finally {
+            photoCameraBusy = false;
+            if (googleIdToken && (!scanner || !scanner.isScanning)) {
+              try { await startScanner(); }
+              catch (cameraError) { console.warn('Scanner belum aktif kembali:', cameraError); }
+            }
+          }
+        }
+      } finally {
+        isPhotoCaptureRunning = false;
+      }
+    }
+
+    function addPhotoRetryButton(requestId, mode) {
+      const card = document.getElementById('photo-' + requestId);
+      if (!card || card.querySelector('.photo-retry')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'queue-retry photo-retry';
+      button.textContent = mode === 'capture' ? 'Coba foto lagi' : 'Coba upload lagi';
+      button.addEventListener('click', () => retryPhotoTask(requestId, mode));
+      card.appendChild(button);
+    }
+
+    async function retryPhotoTask(requestId, mode) {
+      const tasks = await getPhotoTasks();
+      const task = tasks.find(x => x.requestId === requestId);
+      if (!task) return;
+      const card = document.getElementById('photo-' + requestId);
+      const button = card && card.querySelector('.photo-retry');
+      if (button) button.remove();
+      if (mode === 'capture' || !task.imageData) {
+        task.status = 'CAPTURING';
+        task.lastError = '';
+        await savePhotoTask(task);
+        if (!card) addPhotoQueueItem(task);
+        const queueItem = document.getElementById('photo-' + requestId);
+        photoCaptureTasks.push({ requestId, response: task, item: { token: task.token }, queueItem });
+        processPhotoCaptureQueue();
+      } else {
+        task.status = 'PHOTO_SAVED';
+        task.lastError = '';
+        await savePhotoTask(task);
+        updatePhotoState(requestId, 'Mencoba mengunggah foto kembali...', '');
+        startBackgroundPhotoUpload(task.imageData, requestId, task.token);
+      }
+    }
+
+    async function restorePhotoTasks() {
+      try {
+        const tasks = await getPhotoTasks();
+        for (const task of tasks) {
+          if (task.status === 'DONE' && Date.now() - Number(task.completedAt || 0) >= PHOTO_HISTORY_INTERVAL) {
+            await deletePhotoTask(task.requestId);
+            continue;
+          }
+          const existingCard = document.getElementById('photo-' + task.requestId);
+          const card = existingCard || addPhotoQueueItem(task);
+          if (task.imageData) showPhotoPreview(card, task.imageData);
+          if (task.status === 'DONE') {
+            updatePhotoState(task.requestId, '✓ Foto berhasil tersimpan di Google Drive.', 'done');
+          } else if (task.status === 'FAILED') {
+            updatePhotoState(task.requestId, '✕ ' + (task.lastError || 'Foto belum berhasil diproses.'), 'failed');
+            addPhotoRetryButton(task.requestId, task.imageData ? 'upload' : 'capture');
+          } else if (task.imageData && task.serverReady) {
+            updatePhotoState(task.requestId, 'Foto tersimpan di tablet. Melanjutkan upload...', '');
+            startBackgroundPhotoUpload(task.imageData, task.requestId, task.token);
+          } else if (task.imageData) {
+            updatePhotoState(task.requestId, 'Foto aman di tablet. Menunggu konfirmasi absensi...', '');
+          } else if (googleIdToken &&
+                     !photoCaptureTasks.some(x => x.requestId === task.requestId)) {
+            photoCaptureTasks.push({ requestId: task.requestId, response: task,
+              item: { token: task.token }, queueItem: card });
+          } else {
+            updatePhotoState(task.requestId, 'Menunggu login untuk mengambil foto...', '');
+          }
+        }
+        if (googleIdToken) processPhotoCaptureQueue();
+      } catch (error) {
+        console.warn('Gagal memulihkan antrean foto:', error);
+      }
+    }
+
+    async function retryAttendance(requestId) {
+      if (!googleIdToken) { showMessage('Login Google terlebih dahulu untuk mencoba ulang.','error'); return; }
+      const pending = await getPendingAttendance();
+      const item = pending.find(x => x.requestId === requestId);
+      if (!item) return;
+      item.status = 'SENDING'; await savePendingAttendance(item);
+      saveAttendanceHistory({ requestId, name:item.name || 'Menunggu konfirmasi server',
+        activity:item.activity || '-', scannedAt:item.scannedAt, createdAt:item.createdAt, status:'SENDING' });
+      renderAttendanceQueue();
+      try {
+        const response = await requestAttendanceWithRetry(item.token, item.requestId, item.scannedAt || new Date(item.createdAt).toISOString());
+        if (!response || !response.success) throw new Error((response && response.message) || 'Server belum menerima absensi.');
+        await removePendingAttendance(requestId);
+        response.requestId = response.requestId || requestId;
+        saveAttendanceHistory({ requestId, name:response.name || item.name, id:response.id || response.employeeId || '',
+          activity:response.activity || item.activity, time:response.time || '', date:response.date || '',
+          createdAt:item.createdAt, completedAt:Date.now(), status:'SUCCESS' });
+        showAttendanceNotification('✓ ANTREAN BERHASIL',(response.name || 'Siswa') + ' sudah tercatat di Spreadsheet.','success');
+        playAttendanceSound('success');
+        await markPhotoServerReady(response, item);
+      } catch(error) {
+        item.status = 'FAILED'; item.lastError = error.message || String(error); await savePendingAttendance(item);
+        saveAttendanceHistory({ requestId, name:item.name || 'Belum terkonfirmasi', activity:item.activity || '-',
+          scannedAt:item.scannedAt, createdAt:item.createdAt, status:'FAILED', message:item.lastError });
+        showAttendanceNotification('✕ BELUM BERHASIL',item.lastError,'error');
+        playAttendanceSound('failed');
+      }
+      renderAttendanceQueue();
+    }
+
+    async function syncPendingAttendanceQueue() {
+      if (isSyncingAttendanceQueue || !googleIdToken || !navigator.onLine) {
+        renderAttendanceQueue(); return;
+      }
+      isSyncingAttendanceQueue = true;
+      let stoppedOnFailure = false;
+      try {
+        // Item gagal menunggu tindakan manual melalui tombol Coba lagi.
+        const pending = (await getPendingAttendance()).filter(item => item.status !== 'FAILED');
+        for (const item of pending) {
+          if (!googleIdToken || !navigator.onLine) break;
+          item.status = 'SENDING'; await savePendingAttendance(item);
+          saveAttendanceHistory({ requestId:item.requestId, name:item.name || 'Menunggu konfirmasi server',
+            activity:item.activity || '-', scannedAt:item.scannedAt, createdAt:item.createdAt, status:'SENDING' });
+          renderAttendanceQueue();
+          try {
+            const response = await requestAttendanceWithRetry(item.token, item.requestId, item.scannedAt || new Date(item.createdAt).toISOString());
+            if (!response || !response.success) throw new Error((response && response.message) || 'Server belum menerima absensi.');
+            await removePendingAttendance(item.requestId);
+            response.requestId = response.requestId || item.requestId;
+            saveAttendanceHistory({ requestId:item.requestId, name:response.name || item.name,
+              id:response.id || response.employeeId || '', activity:response.activity || item.activity, time:response.time || '',
+              date:response.date || '', createdAt:item.createdAt, completedAt:Date.now(), status:'SUCCESS' });
+            await markPhotoServerReady(response, item);
+            playAttendanceSound('success');
+            console.info('ABSENSI ANTREAN BERHASIL DISINKRONKAN:',item.requestId);
+          } catch(error) {
+            item.status = 'FAILED'; item.lastError = error.message || String(error);
+            await savePendingAttendance(item);
+            saveAttendanceHistory({ requestId:item.requestId, name:item.name || 'Belum terkonfirmasi',
+              activity:item.activity || '-', scannedAt:item.scannedAt, createdAt:item.createdAt,
+              status:'FAILED', message:item.lastError });
+            showAttendanceNotification('✕ ABSENSI GAGAL', item.lastError, 'error');
+            playAttendanceSound('failed');
+            console.warn('ANTREAN ABSENSI GAGAL:',item.requestId,error);
+            stoppedOnFailure = true;
+            break; // Urutan transaksi dijaga; item gagal perlu diperiksa/dicoba ulang.
+          }
+        }
+      } catch(error) { console.error('GAGAL MEMERIKSA ANTREAN ABSENSI:',error); }
+      finally {
+        isSyncingAttendanceQueue = false;
+        renderAttendanceQueue();
+        // Jika ada scan baru masuk ketika sinkronisasi sedang berlangsung, proses setelah batch ini.
+        if (!stoppedOnFailure && navigator.onLine) {
+          getPendingAttendance().then(items => {
+            if (items.some(item => item.status !== 'FAILED')) {
+              setTimeout(() => syncPendingAttendanceQueue(), 150);
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+
+    window.addEventListener('online', () => {
+      if (googleIdToken) syncPendingAttendanceQueue();
+      retryStoredPhotoUploads();
+    });
+
+    async function retryStoredPhotoUploads() {
+      if (!navigator.onLine) return;
+      try {
+        const tasks = await getPhotoTasks();
+        tasks.forEach(task => {
+          if (task.status === 'FAILED' && task.imageData && task.serverReady) {
+            startBackgroundPhotoUpload(task.imageData, task.requestId, task.token);
+          }
+        });
+      } catch (error) {
+        console.warn('Gagal memeriksa ulang foto:', error);
+      }
+    }
+
+    setInterval(() => {
+      if (navigator.onLine) retryStoredPhotoUploads();
+    }, 30000);
+
+    // =====================================
+    // RESET SCANNER
+    // =====================================
+
+    async function resetScanner() {
+      // Lepaskan kunci scan segera setelah kamera siap kembali.
+      isProcessing = false;
+      if (!googleIdToken || photoCameraBusy || isCapturingFace) return;
+
+      try {
+        if (!scanner || !scanner.isScanning) {
+          await startScanner();
+        }
+        showMessage(
+          'KAMERA AKTIF\nSilakan pindai QR berikutnya.',
+          'success'
+        );
+      } catch (error) {
+        showMessage(
+          'KAMERA GAGAL DIAKTIFKAN.\n' + error.message,
+          'error'
+        );
+      }
+    }
+
+    // Kirim ulang hanya jika koneksi/response terputus.
+    // requestId yang sama membuat server mengembalikan catatan lama,
+    // bukan membuat absensi kedua.
+    function requestAttendanceOnce(token, requestId, scannedAt) {
+      return new Promise((resolve, reject) => {
+        const callbackName = 'attendanceCallback';
+        const script = document.createElement('script');
+        let finished = false;
+
+        const timeout = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          delete window[callbackName];
+          script.remove();
+          reject(new Error('Server belum memberikan respons.'));
+        }, 30000);
+
+        window[callbackName] = result => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timeout);
+          delete window[callbackName];
+          script.remove();
+          resolve(result);
+        };
+
+        const params = new URLSearchParams({
+          action: 'scan',
+          token: token,
+          device: detectDevice(),
+          id_token: googleIdToken,
+          requestId: requestId,
+          scannedAt: scannedAt || '',
+          callback: callbackName
+        });
+
+        script.src = SCRIPT_URL + '?' + params.toString();
+        script.onerror = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timeout);
+          delete window[callbackName];
+          script.remove();
+          reject(new Error('Koneksi ke server terputus.'));
+        };
+
+        document.body.appendChild(script);
+      });
+    }
+
+    async function requestAttendanceWithRetry(token, requestId, scannedAt) {
+      try {
+        return await requestAttendanceOnce(token, requestId, scannedAt);
+      } catch (firstError) {
+        // Percobaan kedua memakai ID dan waktu scan yang sama.
+        // Timestamp tidak dibuat ulang saat koneksi dicoba kembali.
+        return await requestAttendanceOnce(token, requestId, scannedAt);
+      }
+    }
+
+    // =====================================
+    // KIRIM ABSENSI
+    // =====================================
+
+    async function sendAttendance(token, scannedAt) {
+      if (!googleIdToken) {
+        showMessage('Silakan login Google terlebih dahulu.', 'error');
+        isProcessing = false;
+        return;
+      }
+
+      const requestId = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Date.now() + '_' + Math.random().toString(36).slice(2);
+
+      try {
+        const existingPending = await getPendingAttendance();
+        if (existingPending.some(item => item.token === token)) {
+          showAttendanceNotification('⌛ QR MASIH DALAM ANTREAN',
+            'QR ini sudah memiliki transaksi yang belum selesai. Jangan scan ulang.', 'error');
+          playAttendanceSound('failed');
+          showMessage('QR MASIH DALAM ANTREAN.\nPeriksa Room Chat untuk melihat statusnya.', 'error');
+          return;
+        }
+
+        // Prioritas pertama: simpan transaksi di tablet.
+        // Setelah IndexedDB mengonfirmasi, scanner boleh menerima QR berikutnya.
+        const queueItem = {
+          requestId, token, createdAt: Date.now(), scannedAt: scannedAt || new Date().toISOString(),
+          status: 'PENDING', name: 'Menunggu konfirmasi server', activity: '-'
+        };
+        await savePendingAttendance(queueItem);
+        await enqueuePhotoCapture({ requestId, name:'Menunggu konfirmasi server',
+          activity:'-', time:'', date:'' }, queueItem);
+        saveAttendanceHistory({ requestId, name:'Menunggu konfirmasi server', activity:'-',
+          scannedAt:new Date().toLocaleTimeString('id-ID'), createdAt:queueItem.createdAt, status:'PENDING' });
+        renderAttendanceQueue();
+
+        showMessage('✓ ABSENSI MASUK ANTREAN\nSilakan scan siswa berikutnya.', 'success');
+        showAttendanceNotification('✓ BERHASIL MASUK ANTREAN',
+          'Data sudah diamankan di tablet. Konfirmasi Google Spreadsheet sedang berjalan di latar belakang.', 'success');
+        playAttendanceSound('queued');
+
+        // Lepaskan scanner segera; pengiriman server tidak ditunggu.
+        isProcessing = false;
+        await resetScanner();
+        syncPendingAttendanceQueue();
+
+      } catch (error) {
+        const failureText = error.message || String(error);
+        showMessage('GAGAL MEMASUKKAN KE ANTREAN\n' + failureText, 'error');
+        showAttendanceNotification('✕ GAGAL MASUK ANTREAN', failureText, 'error');
+        playAttendanceSound('failed');
+        console.error('ERROR ANTREAN ABSENSI:', error);
+      } finally {
+        // Pastikan kunci scan dilepas meskipun penyimpanan lokal gagal.
+        isProcessing = false;
+        if (googleIdToken && (!scanner || !scanner.isScanning)) resetScanner();
+      }
+    }
+
+        // =====================================
+    // QR BERHASIL DIPINDAI
+    // =====================================
+
+    function onScanSuccess(decodedText) {
+      const now = Date.now();
+      // Waktu dicatat tepat saat QR berhasil terbaca, bukan saat server menerima data.
+      const scanTimestamp = new Date(now).toISOString();
+
+      if (isProcessing || photoCameraBusy || isCapturingFace || now - lastScanTime < 1200) return;
+
+      const token = extractToken(decodedText);
+
+      if (!token) {
+        lastScanTime = now;
+        showMessage('QR TIDAK VALID.', 'error');
+        showAttendanceNotification(
+          '✕ QR TIDAK VALID',
+          'QR tidak dikenali. Silakan gunakan kartu QR siswa yang benar.',
+          'error'
+        );
+        playAttendanceSound('invalid');
+        return;
+      }
+
+      isProcessing = true;
+      lastScanTime = now;
+
+      showMessage('MEMPROSES ABSENSI...', 'loading');
+      sendAttendance(token, scanTimestamp);
+    }
+
+    // =====================================
+    // MULAI SCANNER
+    // =====================================
+
+    async function startScanner() {
+      // Membuka izin audio dari interaksi tombol pengguna; tidak menunggu bunyi.
+      unlockAttendanceAudio();
+      if (!googleIdToken) {
+        showMessage('Login Google terlebih dahulu.', 'error');
+        return;
+      }
+
+      startButton.disabled = true;
+
+      try {
+        if (!scanner) {
+          scanner = new Html5Qrcode('reader');
+        }
+
+        await scanner.start(
+          { facingMode: 'environment' },
+          {
+            fps: 15,
+            qrbox: { width: 250, height: 250 }
+          },
+          onScanSuccess
+        );
+
+        showMessage(
+          'KAMERA AKTIF.\nARAHKAN KE QR SISWA.',
+          'success'
+        );
+
+        startButton.style.display = 'none';
+
+      } catch (error) {
+        showMessage(
+          'KAMERA GAGAL DIAKTIFKAN.\n' + error.message,
+          'error'
+        );
+
+        startButton.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
