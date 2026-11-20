@@ -426,7 +426,7 @@
     // =====================================
 
     const SCRIPT_URL =
-      'https://script.google.com/macros/s/AKfycbw8ic1uGa5JOvJT2xLEKMTtII6RQNK84JUMXxfeEYslTCZcJaOtR7sOt3DtdtdpVVtQ/exec';
+      'https://script.google.com/macros/s/AKfycbw4xJVTs7N15H7AcxwvHfP51OpUFc851LhBc3stEGgBAW8zicKRzszNkvsg8Rd2bzzG/exec';
     
     // Ganti dengan OAuth Client ID dari Google Cloud sekolah.
     const GOOGLE_CLIENT_ID =
@@ -533,7 +533,7 @@
 // Upload yang masih berjalan tidak pernah dihapus.
 // =====================================
 const PHOTO_HISTORY_RESET_KEY = 'absensi_photo_history_reset_at';
-const PHOTO_HISTORY_INTERVAL = 60 * 60 * 1000; // 1 jam
+const PHOTO_HISTORY_INTERVAL = 12 * 60 * 60 * 1000; // 12 jam
 
 function ensureQueueEmptyMessage() {
   const queue = document.getElementById('photoQueue');
@@ -548,7 +548,7 @@ function ensureQueueEmptyMessage() {
 }
 
 async function resetCompletedPhotoHistory() {
-  // Hapus foto BERHASIL setelah satu jam sejak upload selesai.
+  // Hapus foto BERHASIL setelah 12 jam sejak upload selesai.
   // Foto GAGAL dan yang masih diproses tetap disimpan.
   try {
     const tasks = await getPhotoTasks();
@@ -1035,9 +1035,27 @@ function startBackgroundPhotoUpload(imageData, requestId, token) {
     // LOGIN GOOGLE
     // =====================================
 
+
+    function expireGoogleSession(message) {
+      googleIdToken = '';
+      try {
+        sessionStorage.removeItem('absensi_google_id_token_miftahulfalah');
+      } catch (e) {}
+      const login = document.getElementById('googleLogin');
+      if (login) login.style.display = 'flex';
+      startButton.disabled = true;
+      showMessage('SESI LOGIN BERAKHIR. Silakan login Google kembali.\n' + (message || ''), 'error');
+      accountInfo.textContent = 'Login ulang menggunakan akun resmi sekolah.';
+    }
+
     function initializeGoogleLogin() {
       if (!window.google || !google.accounts) {
-        setTimeout(initializeGoogleLogin, 500);
+        if (!window.__googleLoginRetryCount) window.__googleLoginRetryCount = 0;
+        if (window.__googleLoginRetryCount++ < 20) {
+          setTimeout(initializeGoogleLogin, 500);
+        } else {
+          showMessage('Layanan login Google gagal dimuat. Periksa koneksi internet lalu refresh halaman.', 'error');
+        }
         return;
       }
 
@@ -1491,14 +1509,18 @@ function startBackgroundPhotoUpload(imageData, requestId, token) {
             console.error('ERROR AMBIL FOTO:', photoError);
           } finally {
             photoCameraBusy = false;
-            if (googleIdToken && (!scanner || !scanner.isScanning)) {
-              try { await startScanner(); }
-              catch (cameraError) { console.warn('Scanner belum aktif kembali:', cameraError); }
-            }
           }
         }
       } finally {
         isPhotoCaptureRunning = false;
+        // Aktifkan scanner hanya setelah seluruh antrean pengambilan foto selesai.
+        if (googleIdToken && (!scanner || !scanner.isScanning)) {
+          try { await startScanner(); }
+          catch (cameraError) {
+            console.warn('Scanner belum aktif kembali:', cameraError);
+            showMessage('KAMERA GAGAL DIAKTIFKAN. ' + cameraError.message, 'error');
+          }
+        }
       }
     }
 
@@ -1583,7 +1605,13 @@ function startBackgroundPhotoUpload(imageData, requestId, token) {
       renderAttendanceQueue();
       try {
         const response = await requestAttendanceWithRetry(item.token, item.requestId, item.scannedAt || new Date(item.createdAt).toISOString());
-        if (!response || !response.success) throw new Error((response && response.message) || 'Server belum menerima absensi.');
+        if (!response || !response.success) {
+          const serverMessage = (response && response.message) || 'Server belum menerima absensi.';
+          if (/kedaluwarsa|expired|login google tidak valid|sesi login/i.test(serverMessage)) {
+            expireGoogleSession(serverMessage);
+          }
+          throw new Error(serverMessage);
+        }
         await removePendingAttendance(requestId);
         response.requestId = response.requestId || requestId;
         saveAttendanceHistory({ requestId, name:response.name || item.name, id:response.id || response.employeeId || '',
@@ -1619,7 +1647,13 @@ function startBackgroundPhotoUpload(imageData, requestId, token) {
           renderAttendanceQueue();
           try {
             const response = await requestAttendanceWithRetry(item.token, item.requestId, item.scannedAt || new Date(item.createdAt).toISOString());
-            if (!response || !response.success) throw new Error((response && response.message) || 'Server belum menerima absensi.');
+            if (!response || !response.success) {
+          const serverMessage = (response && response.message) || 'Server belum menerima absensi.';
+          if (/kedaluwarsa|expired|login google tidak valid|sesi login/i.test(serverMessage)) {
+            expireGoogleSession(serverMessage);
+          }
+          throw new Error(serverMessage);
+        }
             await removePendingAttendance(item.requestId);
             response.requestId = response.requestId || item.requestId;
             saveAttendanceHistory({ requestId:item.requestId, name:response.name || item.name,
